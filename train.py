@@ -32,6 +32,8 @@ SAMPLE_FREQ = 100
 #EMBEDDING_METHOD = 'FASTTEXT_BOW'
 EMBEDDING_METHOD = 'INFERSENT'
 
+print('Embedding method is ' + EMBEDDING_METHOD)
+
 if EMBEDDING_METHOD == 'FASTTEXT_BOW':
     EMBEDDING_SIZE = 300
 elif EMBEDDING_METHOD == 'INFERSENT':
@@ -123,6 +125,7 @@ def get_next_line(source_file):
             #source_file.seek(0)
             return None
         line = source_file.readline()
+    return line
 
 
 def track_loss(output_str, output_list):
@@ -300,10 +303,9 @@ for epoch in range(NUM_EPOCHS):
 
     # get the first line in the file
     reconstruction_file.seek(0)
-    line = 'On your mark, get set, go!'
+    line = get_next_line(reconstruction_file)
 
     while(line):
-        line = get_next_line(reconstruction_file)
         total_training_steps += 1
         step += 1
 
@@ -313,7 +315,7 @@ for epoch in range(NUM_EPOCHS):
         output_list = [epoch, step]
         
         #HACK for overfitting
-        line = 'this is a test'
+        #line = 'this is a test'
 
         if EMBEDDING_METHOD == 'FASTTEXT_BOW':
             x = torch.Tensor([fasttext_encode(line, dataset)])
@@ -354,5 +356,7 @@ for epoch in range(NUM_EPOCHS):
 
         if total_training_steps % (10*SAMPLE_FREQ) == 0:
             save_data(output_list, decoder, optimizer)
+    
+        line = get_next_line(reconstruction_file)
 
     print("\n\nTrained epoch: {}, epoch loss: {}\n\n".format(epoch, epoch_loss))
