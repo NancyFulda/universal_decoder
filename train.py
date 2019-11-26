@@ -261,7 +261,7 @@ for epoch in range(NUM_EPOCHS):
         output_list = [epoch, step]
         
         #HACK for overfitting
-        line = 'this is a test'
+        #line = 'this is a test'
 
         x = torch.Tensor([fasttext_encode(line, dataset)])
 
