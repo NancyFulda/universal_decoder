@@ -14,33 +14,34 @@ from decoder_model import Universal_Decoder
 import random
 import time
 import json
+import pickle as pkl
 
 #
 # ===============================================
 #
 # Globals
 
-SAVE_DIR = 'output_wiki_large/'     # directory to save outputs
+SAVE_DIR = 'output2/'     # directory to save outputs
 LOAD_FILE = None         # path to saved training data
 
-CORPUS='tiny_shakespeare' # text corpus to use during training
+CORPUS='wikipedia_large' # text corpus to use during training
 
 USE_CUDA = True
 NUM_EPOCHS = 10
 SAMPLE_FREQ = 1000
 SAVE_FREQ = 100000
 
-#EMBEDDING_METHOD = 'FASTTEXT_BOW'
-EMBEDDING_METHOD = 'INFERSENT'
+INPUT_EMBEDDING = 'FASTTEXT_BOW'
+#INPUT_EMBEDDING = 'INFERSENT'
 
-print('Embedding method is ' + EMBEDDING_METHOD)
+print('Input embedding is ' + INPUT_EMBEDDING)
 
-if EMBEDDING_METHOD == 'FASTTEXT_BOW':
+if INPUT_EMBEDDING == 'FASTTEXT_BOW':
     EMBEDDING_SIZE = 300
-elif EMBEDDING_METHOD == 'INFERSENT':
+elif INPUT_EMBEDDING == 'INFERSENT':
     EMBEDDING_SIZE = 4096
 else:
-    raise ValueError('Unkown embedding method: ' + str(EMBEDDING_METHOD))
+    raise ValueError('Unkown embedding method: ' + str(INPUT_EMBEDDING))
 
 #
 # ===============================================
@@ -86,7 +87,13 @@ CONTEXT_LENGTH = 1
 #
 # Set up embedding models
 
-if EMBEDDING_METHOD in ['INFERSENT']:
+if INPUT_EMBEDDING in ['FASTTEXT_BOW']:
+    with open('data/fasttext.en.pkl','rb') as f:
+        data = pkl.load(f)
+        fasttext_tokens = data['tokens'][:50000]
+        fasttext_vectors = data['vectors'][:50000]
+
+if INPUT_EMBEDDING in ['INFERSENT']:
     import torch
     from infersent.models import InferSent
     V = 2
@@ -121,13 +128,17 @@ def output(message):
         f.write(message + '\n')
 
 
+def clean(line):
+    line = line.replace('\r','').replace('\n','').strip().replace('  ',' ').replace('  ',' ')
+    return line
+
 def get_next_line(source_file):
-    line = source_file.readline()
-    while len(line)<MIN_LEN or len(line)>MAX_LEN:
-        if not line:
-            #source_file.seek(0)
-            return None
+    line = ''
+    while line == '' or line == ' ' or len(line)<MIN_LEN or len(line)>MAX_LEN:
         line = source_file.readline()
+        if not line:
+            return None
+        line = clean(line)
     return line
 
 
@@ -162,12 +173,13 @@ def show_text(line,y,decoder_idxs):
     # print output
     print("---------------------------")
     #print("Input: ", ' '.join(ftext.get_words_from_indices(offer)))
-    print("Input: ", line)
+    print("Input: ", line.strip('\n'))
     print("Target:", ' '.join(ftext.get_words_from_indices(answer)))
     try:
         print("RNN:", ' '.join(ftext.get_words_from_indices(rnn_response)))
     except:
         print("RNN:", '[ERROR] non-ascii character encountered')
+    print()
 		
     with open(SAVE_DIR + 'nohup.out', 'a') as f:
         f.write("---------------------------\n")
@@ -229,9 +241,23 @@ def save_data(output_list, decoder, optimizer):
 #
 # Encoding algorithms
 
-def fasttext_encode(text, dataset):
+def preprocess(text):
+    text = text.replace('\r','').replace('\n','').strip().lower()
+    text = text.replace('.', ' .')\
+               .replace(',', ' ,')\
+               .replace('?', ' ?')\
+               .replace('!', ' !')\
+               .replace('"', ' "')\
+               .replace("'", " '")\
+               .replace('-', ' -')\
+               .replace(':', ' :')\
+               .replace(';', ' ;')
+    text = text.replace('  ',' ').replace('  ', ' ').replace('  ', ' ')
+    return text
+
+def fasttext_encode(text):
     vector = np.zeros(300)
-    text = dataset.clean(text)
+    text = preprocess(text)
     count = 1
     for word in text.split():
         try:
@@ -248,7 +274,7 @@ def fasttext_encode(text, dataset):
     return vector
 
 def infersent_encode(text):
-    text = text.lower()
+    text = preprocess(text)
     if isinstance(text, str):
         #infersent.update_vocab([text])
         embeddings = infersent.encode([text], tokenize=True)
@@ -313,7 +339,7 @@ for epoch in range(NUM_EPOCHS):
         total_training_steps += 1
         step += 1
 
-        sample = (total_training_steps % SAMPLE_FREQ == 0)
+        sample = (step % SAMPLE_FREQ == 0)
 
         output_str = "Epoch: %d, step: %d: "
         output_list = [epoch, step]
@@ -321,12 +347,12 @@ for epoch in range(NUM_EPOCHS):
         #HACK for overfitting
         #line = 'this is a test'
 
-        if EMBEDDING_METHOD == 'FASTTEXT_BOW':
-            x = torch.Tensor([fasttext_encode(line, dataset)])
-        elif EMBEDDING_METHOD == 'INFERSENT':
+        if INPUT_EMBEDDING == 'FASTTEXT_BOW':
+            x = torch.Tensor([fasttext_encode(line)])
+        elif INPUT_EMBEDDING == 'INFERSENT':
             x = torch.Tensor([infersent_encode(line)])
         else:
-            raise ValueError('Unknown embedding method: ' + str(EMBEDDING_METHOD))
+            raise ValueError('Unknown embedding method: ' + str(INPUT_EMBEDDING))
 
         tokens = ['SOS'] + line.split() + ['EOS']
         y = ftext.get_indices(tokens)
