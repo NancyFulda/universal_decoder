@@ -20,14 +20,27 @@ import json
 #
 # Globals
 
-SAVE_DIR = 'output/'     # directory to save outputs
+SAVE_DIR = 'output_wiki_large/'     # directory to save outputs
 LOAD_FILE = None         # path to saved training data
 
 CORPUS='tiny_shakespeare' # text corpus to use during training
 
 USE_CUDA = True
 NUM_EPOCHS = 10
-SAMPLE_FREQ = 100
+SAMPLE_FREQ = 1000
+SAVE_FREQ = 100000
+
+#EMBEDDING_METHOD = 'FASTTEXT_BOW'
+EMBEDDING_METHOD = 'INFERSENT'
+
+print('Embedding method is ' + EMBEDDING_METHOD)
+
+if EMBEDDING_METHOD == 'FASTTEXT_BOW':
+    EMBEDDING_SIZE = 300
+elif EMBEDDING_METHOD == 'INFERSENT':
+    EMBEDDING_SIZE = 4096
+else:
+    raise ValueError('Unkown embedding method: ' + str(EMBEDDING_METHOD))
 
 #
 # ===============================================
@@ -35,9 +48,13 @@ SAMPLE_FREQ = 100
 # Corpus Definitions
 
 if CORPUS == 'tiny_shakespeare':
-    reconstruction_file=open('text_corpora/tiny_shakespeare.txt','r')
+    input_filename = 'text_corpora/tiny_shakespeare.txt'
 if CORPUS == 'wikipedia':
-    reconstruction_file=open('data/context_prediction/Wikipedia_text_with_periods_clean.txt','r')
+    input_filename = 'text_corpora/Wikipedia_first_10000_lines_clean.txt'
+if CORPUS == 'wikipedia_large':
+    input_filename = 'text_corpora/Wikipedia_text_with_periods_clean.txt'
+
+reconstruction_file = open(input_filename,'r')
 
 
 #
@@ -56,13 +73,41 @@ FASTTEXT_SIZE = 50000
 
 # Sizes
 VOCAB_SIZE = FASTTEXT_SIZE+3
-EMBEDDING_SIZE = 300
 Z_DIMENSION = EMBEDDING_SIZE
 DECODER_HIDDEN_SIZE = 300
 
 MAX_DECODER_LENGTH = 300
 NUM_LAYERS_FOR_RNNS = 1
 CONTEXT_LENGTH = 1
+
+
+#
+# ===============================================
+#
+# Set up embedding models
+
+if EMBEDDING_METHOD in ['INFERSENT']:
+    import torch
+    from infersent.models import InferSent
+    V = 2
+    MODEL_PATH = 'infersent/encoder/infersent%s.pkl' % V
+    params_model = {'bsize': 64, 'word_emb_dim': 300, 'enc_lstm_dim': 2048,
+                'pool_type': 'max', 'dpout_model': 0.0, 'version': V}
+    infersent = InferSent(params_model)
+    infersent.load_state_dict(torch.load(MODEL_PATH))
+
+    W2V_PATH = 'infersent/fastText/crawl-300d-2M.vec'
+    infersent.set_w2v_path(W2V_PATH)
+
+    # get core sentences
+
+    X=[]
+    with open(input_filename, 'r') as f:
+        for line in f:
+            sentence = line.strip('\n').strip()
+            if len(sentence) > 1:
+                X.append(sentence)
+    infersent.build_vocab(X, tokenize=True)
 
 
 #
@@ -83,6 +128,7 @@ def get_next_line(source_file):
             #source_file.seek(0)
             return None
         line = source_file.readline()
+    return line
 
 
 def track_loss(output_str, output_list):
@@ -96,13 +142,13 @@ def track_loss(output_str, output_list):
             f.write("---------------------------\n\n")
 
 
-def show_text():
+def show_text(line,y,decoder_idxs):
     # ----------------------------------------------------------------
     # prepare offer
-    if USE_CUDA:
-        offer = np.argmax(x.cpu().data.numpy(), axis=1).astype(int)
-    else:
-        offer = np.argmax(x.data.numpy(), axis=1).astype(int)
+    #if USE_CUDA:
+    #    offer = np.argmax(x.cpu().data.numpy(), axis=1).astype(int)
+    #else:
+    #    offer = np.argmax(x.data.numpy(), axis=1).astype(int)
 
     # prepare answer
     if USE_CUDA:
@@ -115,8 +161,9 @@ def show_text():
         
     # print output
     print("---------------------------")
-    print("Offer: ", ' '.join(ftext.get_words_from_indices(offer)))
-    print("Answer:", ' '.join(ftext.get_words_from_indices(answer)))
+    #print("Input: ", ' '.join(ftext.get_words_from_indices(offer)))
+    print("Input: ", line)
+    print("Target:", ' '.join(ftext.get_words_from_indices(answer)))
     try:
         print("RNN:", ' '.join(ftext.get_words_from_indices(rnn_response)))
     except:
@@ -124,7 +171,8 @@ def show_text():
 		
     with open(SAVE_DIR + 'nohup.out', 'a') as f:
         f.write("---------------------------\n")
-        f.write("Offer: "+' '.join(ftext.get_words_from_indices(offer))+'\n')
+        #f.write("Offer: "+' '.join(ftext.get_words_from_indices(offer))+'\n')
+        f.write("Input: " + line)
         f.write("Answer:"+' '.join(ftext.get_words_from_indices(answer))+'\n')
         try:
             f.write("RNN:"+' '.join(ftext.get_words_from_indices(rnn_response))+'\n')
@@ -199,6 +247,17 @@ def fasttext_encode(text, dataset):
 
     return vector
 
+def infersent_encode(text):
+    text = text.lower()
+    if isinstance(text, str):
+        #infersent.update_vocab([text])
+        embeddings = infersent.encode([text], tokenize=True)
+        return embeddings[0]
+    else:
+        #infersent.update_vocab(text)
+        embeddings = infersent.encode(text, tokenize=True)
+        return embeddings
+
 
 #
 # ===============================================
@@ -248,10 +307,9 @@ for epoch in range(NUM_EPOCHS):
 
     # get the first line in the file
     reconstruction_file.seek(0)
-    line = 'On your mark, get set, go!'
+    line = get_next_line(reconstruction_file)
 
     while(line):
-        line = get_next_line(reconstruction_file)
         total_training_steps += 1
         step += 1
 
@@ -263,7 +321,12 @@ for epoch in range(NUM_EPOCHS):
         #HACK for overfitting
         #line = 'this is a test'
 
-        x = torch.Tensor([fasttext_encode(line, dataset)])
+        if EMBEDDING_METHOD == 'FASTTEXT_BOW':
+            x = torch.Tensor([fasttext_encode(line, dataset)])
+        elif EMBEDDING_METHOD == 'INFERSENT':
+            x = torch.Tensor([infersent_encode(line)])
+        else:
+            raise ValueError('Unknown embedding method: ' + str(EMBEDDING_METHOD))
 
         tokens = ['SOS'] + line.split() + ['EOS']
         y = ftext.get_indices(tokens)
@@ -278,15 +341,16 @@ for epoch in range(NUM_EPOCHS):
         decoder_outputs, decoder_idxs, rnn_outputs = decoder(x, y, sample)
 
         if sample:
-            show_text()
+            show_text(line,y,decoder_idxs)
 
         # mean-squared error
         reconstruction_loss = torch.mean((y - decoder_outputs)*(y-decoder_outputs))
    
         loss = 0
-        loss += reconstruction_loss
+        alpha = 1000 #adjust loss to improve learning speed
+        loss += alpha*reconstruction_loss
         output_str += "  loss: %.8f"
-        output_list.append(reconstruction_loss)
+        output_list.append(loss)
 
         optimizer.zero_grad()
         loss.backward()
@@ -294,7 +358,9 @@ for epoch in range(NUM_EPOCHS):
 
         track_loss(output_str, output_list)
 
-        if total_training_steps % (10*SAMPLE_FREQ) == 0:
+        if total_training_steps % (SAVE_FREQ) == 0:
             save_data(output_list, decoder, optimizer)
+    
+        line = get_next_line(reconstruction_file)
 
     print("\n\nTrained epoch: {}, epoch loss: {}\n\n".format(epoch, epoch_loss))
