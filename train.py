@@ -20,7 +20,7 @@ import json
 #
 # Globals
 
-SAVE_DIR = 'output_wiki_large/'     # directory to save outputs
+SAVE_DIR = 'output/'     # directory to save outputs
 LOAD_FILE = None         # path to saved training data
 
 CORPUS='tiny_shakespeare' # text corpus to use during training
@@ -66,7 +66,7 @@ reconstruction_file = open(input_filename,'r')
 MAX_LEN = 512   #chars
 MIN_LEN = 1    #chars
 
-LEARNING_RATE = .0001
+LEARNING_RATE = .09 #.0001 nancy original value, mayber try .00009 to see if I get slightly more accurate results. 
 
 FASTTEXT_SIZE = 50000
 #FASTTEXT_SIZE = 150000
@@ -89,11 +89,13 @@ CONTEXT_LENGTH = 1
 if EMBEDDING_METHOD in ['INFERSENT']:
     import torch
     from infersent.models import InferSent
+    #from InferSent import models
     V = 2
     MODEL_PATH = 'infersent/encoder/infersent%s.pkl' % V
     params_model = {'bsize': 64, 'word_emb_dim': 300, 'enc_lstm_dim': 2048,
                 'pool_type': 'max', 'dpout_model': 0.0, 'version': V}
     infersent = InferSent(params_model)
+    #infersent = models.InferSent(params_model)
     infersent.load_state_dict(torch.load(MODEL_PATH))
 
     W2V_PATH = 'infersent/fastText/crawl-300d-2M.vec'
