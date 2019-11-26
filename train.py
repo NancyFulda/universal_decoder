@@ -20,14 +20,15 @@ import json
 #
 # Globals
 
-SAVE_DIR = 'output/'     # directory to save outputs
+SAVE_DIR = 'output_wiki_large/'     # directory to save outputs
 LOAD_FILE = None         # path to saved training data
 
 CORPUS='tiny_shakespeare' # text corpus to use during training
 
 USE_CUDA = True
 NUM_EPOCHS = 10
-SAMPLE_FREQ = 100
+SAMPLE_FREQ = 1000
+SAVE_FREQ = 100000
 
 #EMBEDDING_METHOD = 'FASTTEXT_BOW'
 EMBEDDING_METHOD = 'INFERSENT'
@@ -49,7 +50,9 @@ else:
 if CORPUS == 'tiny_shakespeare':
     input_filename = 'text_corpora/tiny_shakespeare.txt'
 if CORPUS == 'wikipedia':
-    input_filename = 'data/context_prediction/Wikipedia_text_with_periods_clean.txt'
+    input_filename = 'text_corpora/Wikipedia_first_10000_lines_clean.txt'
+if CORPUS == 'wikipedia_large':
+    input_filename = 'text_corpora/Wikipedia_text_with_periods_clean.txt'
 
 reconstruction_file = open(input_filename,'r')
 
@@ -245,6 +248,7 @@ def fasttext_encode(text, dataset):
     return vector
 
 def infersent_encode(text):
+    text = text.lower()
     if isinstance(text, str):
         #infersent.update_vocab([text])
         embeddings = infersent.encode([text], tokenize=True)
@@ -354,7 +358,7 @@ for epoch in range(NUM_EPOCHS):
 
         track_loss(output_str, output_list)
 
-        if total_training_steps % (10*SAMPLE_FREQ) == 0:
+        if total_training_steps % (SAVE_FREQ) == 0:
             save_data(output_list, decoder, optimizer)
     
         line = get_next_line(reconstruction_file)
