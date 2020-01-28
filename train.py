@@ -24,15 +24,15 @@ import pickle as pkl
 SAVE_DIR = 'output/'     # directory to save outputs
 LOAD_FILE = None         # path to saved training data
 
-CORPUS='wikipedia_large' # text corpus to use during training
+CORPUS='tiny_shakespeare' # text corpus to use during training
 
 USE_CUDA = True
-NUM_EPOCHS = 10
-SAMPLE_FREQ = 1000
-SAVE_FREQ = 100000
+NUM_EPOCHS = 1 #origially 10
+SAMPLE_FREQ = 200 #originally set down to 1000.. took to 50 for my single sentence experiment. 
+SAVE_FREQ = 100000 #originally 100000
 
-INPUT_EMBEDDING = 'FASTTEXT_BOW'
-#INPUT_EMBEDDING = 'INFERSENT'
+#INPUT_EMBEDDING = 'FASTTEXT_BOW'
+INPUT_EMBEDDING = 'INFERSENT'
 
 print('Input embedding is ' + INPUT_EMBEDDING)
 
@@ -47,7 +47,8 @@ else:
 # ===============================================
 #
 # Corpus Definitions
-
+if CORPUS == 'one_sentence':
+    input_filename = 'text_corpora/onesentence.txt'
 if CORPUS == 'tiny_shakespeare':
     input_filename = 'text_corpora/tiny_shakespeare.txt'
 if CORPUS == 'wikipedia':
@@ -64,22 +65,23 @@ reconstruction_file = open(input_filename,'r')
 # Network Parameters
 
 # length of sentences accepted as input
-MAX_LEN = 512   #chars
+MAX_LEN = 30   #chars    originally set at 512, I'm going to try 30-50
 MIN_LEN = 1    #chars
 
-LEARNING_RATE = .09 #.0001 nancy original value, mayber try .00009 to see if I get slightly more accurate results. 
+LEARNING_RATE = .00009 #.0001 nancy original value, mayber try .00009 to see if I get slightly more accurate results. 
 
-FASTTEXT_SIZE = 50000
-#FASTTEXT_SIZE = 150000
+#FASTTEXT_SIZE = 50000
+FASTTEXT_SIZE = 150000
+#FASTTEXT_SIZE = 1500000
 
 # Sizes
-VOCAB_SIZE = FASTTEXT_SIZE+3
-Z_DIMENSION = EMBEDDING_SIZE
-DECODER_HIDDEN_SIZE = 300
+VOCAB_SIZE = FASTTEXT_SIZE+3 
+Z_DIMENSION = EMBEDDING_SIZE 
+DECODER_HIDDEN_SIZE = 300   #originally set to 300
 
-MAX_DECODER_LENGTH = 300
-NUM_LAYERS_FOR_RNNS = 1
-CONTEXT_LENGTH = 1
+MAX_DECODER_LENGTH = 300 #originally set to 300
+NUM_LAYERS_FOR_RNNS = 1 #originally set to 1
+CONTEXT_LENGTH = 1 #originally set to 1
 
 
 #
@@ -131,18 +133,31 @@ def output(message):
 
 
 def clean(line):
-    line = line.replace('\r','').replace('\n','').strip().replace('  ',' ').replace('  ',' ')
+    line = line.replace('\r','').replace('\n','').strip().replace('  ',' ').replace('  ',' ').lower()
     return line
 
 def get_next_line(source_file):
     line = ''
     while line == '' or line == ' ' or len(line)<MIN_LEN or len(line)>MAX_LEN:
         line = source_file.readline()
+        #line = source_file.readline().shuffle() 
+        #should try using the above line to see if randomizing the sentences gives us good results.
         if not line:
             return None
         line = clean(line)
+        line = preprocess(line)
     return line
 
+#def shuffle_lines():
+    #line = ''
+    #while line == '' or line == ' ' or len(ine)<MIN_LEN or len(line)>MAX_LEN:
+        #continue
+
+        #lines = reconstruction_file.readlines()
+        #lines = lines.shuffle()
+        #for line in lines:
+            #line = clean(line)
+            #line = preprocess(line)
 
 def track_loss(output_str, output_list):
     output_list=tuple(output_list)
