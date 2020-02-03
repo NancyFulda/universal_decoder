@@ -24,10 +24,10 @@ import pickle as pkl
 SAVE_DIR = 'output/'     # directory to save outputs
 LOAD_FILE = None         # path to saved training data
 
-CORPUS='tiny_shakespeare' # text corpus to use during training
+CORPUS='wikipedia' # text corpus to use during training
 
 USE_CUDA = True
-NUM_EPOCHS = 1 #origially 10
+NUM_EPOCHS = 200 #origially 10
 SAMPLE_FREQ = 200 #originally set down to 1000.. took to 50 for my single sentence experiment. 
 SAVE_FREQ = 100000 #originally 100000
 
@@ -65,7 +65,7 @@ reconstruction_file = open(input_filename,'r')
 # Network Parameters
 
 # length of sentences accepted as input
-MAX_LEN = 30   #chars    originally set at 512, I'm going to try 30-50
+MAX_LEN = 50   #chars    originally set at 512, I'm going to try 30-50
 MIN_LEN = 1    #chars
 
 LEARNING_RATE = .00009 #.0001 nancy original value, mayber try .00009 to see if I get slightly more accurate results. 
@@ -77,7 +77,7 @@ FASTTEXT_SIZE = 150000
 # Sizes
 VOCAB_SIZE = FASTTEXT_SIZE+3 
 Z_DIMENSION = EMBEDDING_SIZE 
-DECODER_HIDDEN_SIZE = 300   #originally set to 300
+DECODER_HIDDEN_SIZE = 600   #originally set to 300
 
 MAX_DECODER_LENGTH = 300 #originally set to 300
 NUM_LAYERS_FOR_RNNS = 1 #originally set to 1
