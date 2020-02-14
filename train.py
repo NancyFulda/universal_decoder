@@ -21,10 +21,10 @@ import pickle as pkl
 #
 # Globals
 
-SAVE_DIR = 'output2/'     # directory to save outputs
+SAVE_DIR = 'output/'     # directory to save outputs
 LOAD_FILE = None         # path to saved training data
 
-CORPUS='wikipedia_large' # text corpus to use during training
+CORPUS='tiny_shakespeare' # text corpus to use during training
 
 USE_CUDA = True
 NUM_EPOCHS = 10
@@ -64,7 +64,7 @@ reconstruction_file = open(input_filename,'r')
 # Network Parameters
 
 # length of sentences accepted as input
-MAX_LEN = 512   #chars
+MAX_LEN = 50   #chars
 MIN_LEN = 1    #chars
 
 LEARNING_RATE = .0001
@@ -77,7 +77,8 @@ VOCAB_SIZE = FASTTEXT_SIZE+3
 Z_DIMENSION = EMBEDDING_SIZE
 DECODER_HIDDEN_SIZE = 300
 
-MAX_DECODER_LENGTH = 300
+#MAX_DECODER_LENGTH = 300
+MAX_DECODER_LENGTH = 50
 NUM_LAYERS_FOR_RNNS = 1
 CONTEXT_LENGTH = 1
 
@@ -109,12 +110,14 @@ if INPUT_EMBEDDING in ['INFERSENT']:
     # get core sentences
 
     X=[]
+    print('Building InferSent vocabulary...')
     with open(input_filename, 'r') as f:
         for line in f:
             sentence = line.strip('\n').strip()
             if len(sentence) > 1:
                 X.append(sentence)
     infersent.build_vocab(X, tokenize=True)
+    print('Done building vocabulary')
 
 
 #
@@ -129,7 +132,7 @@ def output(message):
 
 
 def clean(line):
-    line = line.replace('\r','').replace('\n','').strip().replace('  ',' ').replace('  ',' ')
+    line = line.replace('\r','').replace('\n','').strip().replace('  ',' ').replace('  ',' ').lower()
     return line
 
 def get_next_line(source_file):
