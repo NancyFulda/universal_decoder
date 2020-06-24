@@ -10,6 +10,7 @@ from dataset_fasttext import Dataset
 import sys
 
 from decoder_model import Universal_Decoder
+from embedding_apis import embed as use_lite_encode
 
 import random
 import time
@@ -21,18 +22,26 @@ import pickle as pkl
 #
 # Globals
 
-SAVE_DIR = 'output/'     # directory to save outputs
+SAVE_DIR = 'use_lite_wikipedia_fasttext_sim_lr_0.01/'     # directory to save outputs
+#SAVE_DIR = 'use_lite_wikipedia_mse_lr1.0/'     # directory to save outputs
 LOAD_FILE = None         # path to saved training data
 
-CORPUS='wikipedia' # text corpus to use during training
+CORPUS='wikipedia_large' # text corpus to use during training
+#CORPUS='reddit' # text corpus to use during training
 
 USE_CUDA = True
-NUM_EPOCHS = 200 #origially 10
+NUM_EPOCHS = 10 #origially 10
 SAMPLE_FREQ = 200 #originally set down to 1000.. took to 50 for my single sentence experiment. 
-SAVE_FREQ = 1000 #originally 100000
+SAVE_FREQ = 100000 #originally 100000
 
 #INPUT_EMBEDDING = 'FASTTEXT_BOW'
-INPUT_EMBEDDING = 'INFERSENT'
+#INPUT_EMBEDDING = 'INFERSENT'
+INPUT_EMBEDDING = 'USE_LITE'
+
+#LOSS_FUNC = 'MSE'
+#LOSS_FUNC = 'BertScore' 
+#LOSS_FUNC = 'BertSim' 
+LOSS_FUNC = 'Fasttext_sim'
 
 print('Input embedding is ' + INPUT_EMBEDDING)
 
@@ -40,6 +49,8 @@ if INPUT_EMBEDDING == 'FASTTEXT_BOW':
     EMBEDDING_SIZE = 300
 elif INPUT_EMBEDDING == 'INFERSENT':
     EMBEDDING_SIZE = 4096
+elif INPUT_EMBEDDING == 'USE_LITE':
+    EMBEDDING_SIZE = 512
 else:
     raise ValueError('Unkown embedding method: ' + str(INPUT_EMBEDDING))
 
@@ -65,19 +76,20 @@ reconstruction_file = open(input_filename,'r')
 # Network Parameters
 
 # length of sentences accepted as input
-MAX_LEN = 50   #chars    originally set at 512, I'm going to try 30-50
+MAX_LEN = 512  #chars    originally set at 512, I'm going to try 30-50
 MIN_LEN = 1    #chars
 
-LEARNING_RATE = .00009 #.0001 nancy original value, mayber try .00009 to see if I get slightly more accurate results. 
+#LEARNING_RATE = .0001 
+LEARNING_RATE = 0.01 
 
-#FASTTEXT_SIZE = 50000
-FASTTEXT_SIZE = 150000
+FASTTEXT_SIZE = 50000
+#FASTTEXT_SIZE = 150000
 #FASTTEXT_SIZE = 1500000
 
 # Sizes
 VOCAB_SIZE = FASTTEXT_SIZE+3 
 Z_DIMENSION = EMBEDDING_SIZE 
-DECODER_HIDDEN_SIZE = 600   #originally set to 300
+DECODER_HIDDEN_SIZE = 300
 
 MAX_DECODER_LENGTH = 300 #originally set to 300
 NUM_LAYERS_FOR_RNNS = 1 #originally set to 1
@@ -88,11 +100,19 @@ CONTEXT_LENGTH = 1 #originally set to 1
 #
 # Set up embedding models
 
-if INPUT_EMBEDDING in ['FASTTEXT_BOW']:
-    with open('data/fasttext.en.pkl','rb') as f:
+if INPUT_EMBEDDING in ['FASTTEXT_BOW'] or LOSS_FUNC in ['Fasttext_sim']:
+    with open('word_embeddings/fasttext.en.pkl','rb') as f:
         data = pkl.load(f)
-        fasttext_tokens = data['tokens'][:50000]
-        fasttext_vectors = data['vectors'][:50000]
+        fasttext_tokens = data['tokens'][:FASTTEXT_SIZE]
+        fasttext_vectors = data['vectors'][:FASTTEXT_SIZE]
+        if LOSS_FUNC in ['Fasttext_sim']:
+            #stacking in UNK, SOS, and EOF tokens as per fasttext.py
+            fasttext_tensors = fasttext_vectors
+            fasttext_tensors = np.vstack([fasttext_tensors, np.zeros(300)])
+            fasttext_tensors = np.vstack([fasttext_tensors, -1*np.ones(300)])
+            fasttext_tensors = np.vstack([fasttext_tensors, np.ones(300)])
+            fasttext_tensors = torch.Tensor(fasttext_tensors)
+            if USE_CUDA: fasttext_tensors = fasttext_tensors.cuda()
 
 if INPUT_EMBEDDING in ['INFERSENT']:
     import torch
@@ -369,12 +389,16 @@ for epoch in range(NUM_EPOCHS):
             x = torch.Tensor([fasttext_encode(line)])
         elif INPUT_EMBEDDING == 'INFERSENT':
             x = torch.Tensor([infersent_encode(line)])
+        elif INPUT_EMBEDDING == 'USE_LITE':
+            x = torch.Tensor([use_lite_encode([line])])
         else:
             raise ValueError('Unknown embedding method: ' + str(INPUT_EMBEDDING))
 
+        
         tokens = ['SOS'] + line.split() + ['EOS']
         y = ftext.get_indices(tokens)
         y = dataset.to_onehot(y, long_type=False)
+
 
         if USE_CUDA:
             x = Variable(x.cuda())
@@ -387,12 +411,28 @@ for epoch in range(NUM_EPOCHS):
         if sample:
             show_text(line,y,decoder_idxs)
 
-        # mean-squared error
-        reconstruction_loss = torch.mean((y - decoder_outputs)*(y-decoder_outputs))
    
         loss = 0
-        alpha = 1000 #adjust loss to improve learning speed
-        loss += alpha*reconstruction_loss
+
+        if LOSS_FUNC == 'MSE':
+            # mean-squared error
+            reconstruction_loss = torch.mean((y - decoder_outputs)*(y-decoder_outputs))
+            loss += reconstruction_loss
+        elif LOSS_FUNC == 'Fasttext_sim':
+            fasttext_target = torch.Tensor(fasttext_encode(line))
+            if USE_CUDA: fasttext_target = fasttext_target.cuda()
+            decoder_avg = torch.mean(decoder_outputs, axis=0)
+            #print(fasttext_target.shape)
+            #print(decoder_avg.shape, decoder_avg[:3])
+            #print(fasttext_tensors.shape, fasttext_tensors[:3])
+            fasttext_superpos = torch.matmul(decoder_avg, fasttext_tensors)
+            #print(fasttext_superpos.shape, fasttext_superpos[:3])
+            #input('>')
+            fasttext_diff = fasttext_target - fasttext_superpos
+            fasttext_loss = fasttext_diff*fasttext_diff
+            loss += torch.mean(fasttext_loss)
+            
+
         output_str += "  loss: %.8f"
         output_list.append(loss)
 

@@ -20,7 +20,7 @@ import pickle as pkl
 #
 # Globals
 
-LOAD_FILE = "ouput/10_decoder.pkl"
+LOAD_FILE = "ouput/40_decoder.pkl"
 
 CORPUS='wikipedia' # text corpus to use when building InferSent vocab
 
@@ -210,7 +210,9 @@ def encode_sentence(sentence):
     return x,y
 
 def test_sentence(sentence):
+    print(sentence)
     x,y = encode_sentence(sentence)
+    print(x)
     decoder_outputs, decoder_idxs, rnn_outputs = decoder(x, y, sample=True)
     print('\n')
     print(' '.join(ftext.get_words_from_indices(list(map(int,decoder_idxs)))))
