@@ -22,7 +22,7 @@ import pickle as pkl
 #
 # Globals
 
-SAVE_DIR = 'use_lite_wikipedia_fasttext_sim_lr_0.01/'     # directory to save outputs
+SAVE_DIR = 'use_lite_wikipedia_fasttext_sim_lr_1e-5/'     # directory to save outputs
 #SAVE_DIR = 'use_lite_wikipedia_mse_lr1.0/'     # directory to save outputs
 LOAD_FILE = None         # path to saved training data
 
@@ -80,7 +80,7 @@ MAX_LEN = 512  #chars    originally set at 512, I'm going to try 30-50
 MIN_LEN = 1    #chars
 
 #LEARNING_RATE = .0001 
-LEARNING_RATE = 0.01 
+LEARNING_RATE = 1e-5
 
 FASTTEXT_SIZE = 50000
 #FASTTEXT_SIZE = 150000
@@ -311,6 +311,13 @@ def fasttext_encode(text):
 
     return vector
 
+def fasttext_encode_words(text):
+    words = text.split()
+    vectors = []
+    for word in words:
+        vectors.append(fasttext_encode(word))
+    return np.vstack(vectors)
+
 def infersent_encode(text):
     text = preprocess(text)
     if isinstance(text, str):
@@ -419,15 +426,9 @@ for epoch in range(NUM_EPOCHS):
             reconstruction_loss = torch.mean((y - decoder_outputs)*(y-decoder_outputs))
             loss += reconstruction_loss
         elif LOSS_FUNC == 'Fasttext_sim':
-            fasttext_target = torch.Tensor(fasttext_encode(line))
+            fasttext_target = torch.Tensor(fasttext_encode_words('SOS ' + line + ' EOS'))
             if USE_CUDA: fasttext_target = fasttext_target.cuda()
-            decoder_avg = torch.mean(decoder_outputs, axis=0)
-            #print(fasttext_target.shape)
-            #print(decoder_avg.shape, decoder_avg[:3])
-            #print(fasttext_tensors.shape, fasttext_tensors[:3])
-            fasttext_superpos = torch.matmul(decoder_avg, fasttext_tensors)
-            #print(fasttext_superpos.shape, fasttext_superpos[:3])
-            #input('>')
+            fasttext_superpos = torch.matmul(decoder_outputs, fasttext_tensors)
             fasttext_diff = fasttext_target - fasttext_superpos
             fasttext_loss = fasttext_diff*fasttext_diff
             loss += torch.mean(fasttext_loss)
